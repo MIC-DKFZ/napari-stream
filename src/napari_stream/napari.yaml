@@ -1,0 +1,36 @@
+name: napari-stream
+display_name: Napari Stream
+# use 'hidden' to remove plugin from napari hub search results
+visibility: public
+# see https://napari.org/stable/plugins/technical_references/manifest.html#fields for valid categories
+# categories: []
+contributions:
+  commands:
+    - id: napari-stream.make_container_widget
+      python_name: napari_stream:ImageThreshold
+      title: Make threshold Container widget
+    - id: napari-stream.make_magic_widget
+      python_name: napari_stream:threshold_magic_widget
+      title: Make threshold magic widget
+    - id: napari-stream.make_function_widget
+      python_name: napari_stream:threshold_autogenerate_widget
+      title: Make threshold function widget
+    - id: napari-stream.make_qwidget
+      python_name: napari_stream:ExampleQWidget
+      title: Make example QWidget
+  widgets:
+    - command: napari-stream.make_container_widget
+      display_name: Container Threshold
+    - command: napari-stream.make_magic_widget
+      display_name: Magic Threshold
+    - command: napari-stream.make_function_widget
+      autogenerate: true
+      display_name: Autogenerate Threshold
+    - command: napari-stream.make_qwidget
+      display_name: Example QWidget
+  menus:
+    napari/layers/segment:
+      - command: napari-stream.make_container_widget
+      - command: napari-stream.make_magic_widget
+      - command: napari-stream.make_function_widget
+      - command: napari-stream.make_qwidget
