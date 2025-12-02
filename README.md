@@ -68,3 +68,19 @@ If you encounter any problems, please [file an issue] along with a detailed desc
 [tox]: https://tox.readthedocs.io/en/latest/
 [pip]: https://pypi.org/project/pip/
 [PyPI]: https://pypi.org/
+
+# Acknowledgments
+
+<p align="left">
+  <img src="https://github.com/MIC-DKFZ/vidata/raw/main/imgs/Logos/HI_Logo.png" width="150"> &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="https://github.com/MIC-DKFZ/vidata/raw/main/imgs/Logos/DKFZ_Logo.png" width="500">
+</p>
+
+This repository is developed and maintained by the Applied Computer Vision Lab (ACVL)
+of [Helmholtz Imaging](https://www.helmholtz-imaging.de/) and the
+[Division of Medical Image Computing](https://www.dkfz.de/en/medical-image-computing) at DKFZ.
+
+This repository was generated with [copier] using the [napari-plugin-template].
+
+[copier]: https://copier.readthedocs.io/en/stable/
+[napari-plugin-template]: https://github.com/napari/napari-plugin-template
