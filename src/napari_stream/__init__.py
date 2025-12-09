@@ -3,6 +3,6 @@ try:
 except ImportError:
     __version__ = "unknown"
 
-from .sender import send
+from .sender import StreamSender, send
 
 __all__ = []

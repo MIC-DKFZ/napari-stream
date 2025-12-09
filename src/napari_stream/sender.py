@@ -1,5 +1,7 @@
 from __future__ import annotations
 import json
+import os
+import time
 from typing import Optional, Sequence, Any, Iterable
 from collections.abc import Mapping
 
@@ -28,12 +30,16 @@ class StreamSender:
         linger_ms: int = 2000,
         ensure_delivery: bool = True,
     ):
-        self.endpoint = endpoint or default_endpoint()
+        if endpoint is None:
+            endpoint = os.environ.get("NAPARI_STREAM_ENDPOINT") or default_endpoint()
+        self.endpoint = endpoint
         self.ensure_delivery = ensure_delivery
         self._ctx = zmq.Context.instance()
         self._sock = self._ctx.socket(zmq.PUSH)
         self._sock.setsockopt(zmq.SNDHWM, high_water_mark)
         self._sock.setsockopt(zmq.LINGER, linger_ms)
+        # Fail fast if there is no receiver instead of silently queueing.
+        self._sock.setsockopt(zmq.IMMEDIATE, 1)
         self._sock.connect(self.endpoint)
 
     # ------------------------------ public API ------------------------------
@@ -152,7 +158,24 @@ class StreamSender:
 
         header = json.dumps(meta).encode("utf-8")
         buf = memoryview(arr)  # zero-copy
-        tracker = self._sock.send_multipart([header, buf], copy=False, track=self.ensure_delivery)
+        tracker = None
+        last_err = None
+        for _ in range(3):
+            try:
+                tracker = self._sock.send_multipart(
+                    [header, buf],
+                    flags=zmq.NOBLOCK,
+                    copy=False,
+                    track=self.ensure_delivery,
+                )
+                last_err = None
+                break
+            except zmq.Again as e:
+                last_err = e
+                # Allow a brief window for sockets to finish connecting
+                time.sleep(0.05)
+        if last_err is not None:
+            raise RuntimeError(f"No receiver available at endpoint {self.endpoint}") from last_err
         if self.ensure_delivery and tracker is not None:
             tracker.wait()
 
@@ -298,5 +321,17 @@ class StreamSender:
 
 
 def send(*args, **kwargs) -> None:
-    sender = StreamSender()
+    """Send data to a napari receiver.
+
+    Accepts:
+      - numpy.ndarray
+      - torch.Tensor  (detach().cpu().numpy())
+      - blosc2.NDArray
+      - zarr.Array
+      - Python lists/tuples and dicts (recursively searched for arraylikes;
+        nested Python lists of numbers are also converted to NumPy)
+    """
+    sender_keys = ("endpoint", "high_water_mark", "linger_ms", "ensure_delivery")
+    sender_kwargs = {k: kwargs.pop(k) for k in sender_keys if k in kwargs}
+    sender = StreamSender(**sender_kwargs)
     sender.send(*args, **kwargs)

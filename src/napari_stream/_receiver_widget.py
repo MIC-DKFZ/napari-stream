@@ -40,9 +40,7 @@ class ReceiverWidget(QWidget):
         self.autocontrast = QCheckBox("Auto-contrast on new images")
         self.autocontrast.setChecked(True)
 
-        self.btn_start = QPushButton("Start")
-        self.btn_stop = QPushButton("Stop")
-        self.btn_stop.setEnabled(False)
+        self.btn_run = QPushButton("Start")
         self.btn_copy = QPushButton("Copy Endpoint")
 
         top = QVBoxLayout(self)
@@ -55,16 +53,22 @@ class ReceiverWidget(QWidget):
         top.addWidget(self.autocontrast)
         top.addWidget(self.status_label)
         row2 = QHBoxLayout()
-        row2.addWidget(self.btn_start)
-        row2.addWidget(self.btn_stop)
+        row2.addWidget(self.btn_run)
         top.addLayout(row2)
 
-        self.btn_start.clicked.connect(self._on_start)
-        self.btn_stop.clicked.connect(self._on_stop)
+        self.btn_run.clicked.connect(self._on_toggle_clicked)
         self.btn_copy.clicked.connect(self._copy_endpoint)
         self.public_access.stateChanged.connect(self._on_public_toggled)
 
+    def _on_toggle_clicked(self):
+        if self._is_running():
+            self._on_stop()
+        else:
+            self._on_start()
+
     def _on_start(self):
+        if self._is_running():
+            return
         endpoint = self.endpoint_edit.text().strip()
         bind_endpoint = self._resolve_endpoint_for_worker(endpoint)
         self._thread = QThread()
@@ -76,8 +80,8 @@ class ReceiverWidget(QWidget):
         self._worker.status.connect(self.status_label.setText)
         self._worker.error.connect(self._on_error)
 
-        self.btn_start.setEnabled(False)
-        self.btn_stop.setEnabled(True)
+        self.btn_run.setText("Stop")
+        self.btn_run.setEnabled(True)
         self._thread.start()
 
     def _on_stop(self):
@@ -86,8 +90,10 @@ class ReceiverWidget(QWidget):
         if self._thread is not None:
             self._thread.quit()
             self._thread.wait()
-        self.btn_start.setEnabled(True)
-        self.btn_stop.setEnabled(False)
+        self._thread = None
+        self._worker = None
+        self.btn_run.setText("Start")
+        self.btn_run.setEnabled(True)
 
     def _on_public_toggled(self, checked: int):
         is_public = bool(checked)
@@ -96,6 +102,8 @@ class ReceiverWidget(QWidget):
         if current == self._last_auto_endpoint:
             self.endpoint_edit.setText(suggested)
         self._last_auto_endpoint = suggested
+        if self._is_running():
+            self._restart_listener()
 
     def _copy_endpoint(self):
         endpoint = self.endpoint_edit.text().strip()
@@ -111,6 +119,13 @@ class ReceiverWidget(QWidget):
         self.endpoint_edit.setText(fallback)
         self._last_auto_endpoint = fallback
         return bind_endpoint_for_public(fallback)
+
+    def _is_running(self) -> bool:
+        return self._thread is not None and self._thread.isRunning()
+
+    def _restart_listener(self):
+        self._on_stop()
+        self._on_start()
 
     def _on_received(self, arr: np.ndarray, meta: dict):
         name = meta.get("name", "array")
