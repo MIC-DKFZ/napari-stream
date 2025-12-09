@@ -2,11 +2,15 @@ from __future__ import annotations
 import json
 import os
 import sys
-from typing import Optional, Tuple
+import socket
+from typing import Optional
 
 import numpy as np
 import zmq
 from qtpy.QtCore import QObject, QThread, Signal
+
+
+DEFAULT_TCP_PORT = 5556
 
 
 class ZMQImageListener(QObject):
@@ -73,11 +77,40 @@ class ZMQImageListener(QObject):
             self.status.emit("Listener stopped.")
 
 
-def default_endpoint() -> str:
+def default_endpoint(public: bool = False) -> str:
+    if public:
+        return f"tcp://{_preferred_ip()}:{DEFAULT_TCP_PORT}"
     if os.name == "nt":  # Windows: prefer TCP
-        return "tcp://127.0.0.1:5556"
+        return f"tcp://127.0.0.1:{DEFAULT_TCP_PORT}"
     # Unix: fast local IPC
     return "ipc:///tmp/napari_stream.sock"
+
+
+def bind_endpoint_for_public(endpoint: str) -> str:
+    """Convert a TCP endpoint to bind on all interfaces."""
+    if not endpoint.startswith("tcp://"):
+        return endpoint
+    try:
+        host_port = endpoint[len("tcp://"):]
+        host, port = host_port.rsplit(":", 1)
+        port_int = int(port)
+    except Exception:
+        return endpoint
+    if host in ("*", "0.0.0.0"):
+        return endpoint
+    return f"tcp://*:{port_int}"
+
+
+def _preferred_ip() -> str:
+    """Best-effort guess of a non-loopback IPv4 address for sharing endpoints."""
+    try:
+        infos = socket.getaddrinfo(socket.gethostname(), None, family=socket.AF_INET)
+        for _, _, _, _, (addr, *_rest) in infos:
+            if not addr.startswith("127."):
+                return addr
+    except Exception:
+        pass
+    return "127.0.0.1"
 
 
 def _from_bytes(buf: bytes, meta: dict) -> np.ndarray:

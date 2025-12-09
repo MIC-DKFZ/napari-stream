@@ -2,11 +2,20 @@ from __future__ import annotations
 import traceback
 from typing import Optional
 
-from qtpy.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QPushButton, QLabel, QHBoxLayout, QCheckBox
-from qtpy.QtCore import QThread
 import numpy as np
+from qtpy.QtCore import QThread
+from qtpy.QtGui import QGuiApplication
+from qtpy.QtWidgets import (
+    QWidget,
+    QVBoxLayout,
+    QLineEdit,
+    QPushButton,
+    QLabel,
+    QHBoxLayout,
+    QCheckBox,
+)
 
-from ._listener import ZMQImageListener, default_endpoint
+from ._listener import ZMQImageListener, bind_endpoint_for_public, default_endpoint
 
 try:
     from napari.types import ImageData
@@ -24,20 +33,25 @@ class ReceiverWidget(QWidget):
         self._thread: Optional[QThread] = None
         self._worker: Optional[ZMQImageListener] = None
 
-        self.endpoint_edit = QLineEdit(default_endpoint())
+        self._last_auto_endpoint = default_endpoint()
+        self.endpoint_edit = QLineEdit(self._last_auto_endpoint)
         self.status_label = QLabel("Idle")
+        self.public_access = QCheckBox("Enable public Access")
         self.autocontrast = QCheckBox("Auto-contrast on new images")
         self.autocontrast.setChecked(True)
 
         self.btn_start = QPushButton("Start")
         self.btn_stop = QPushButton("Stop")
         self.btn_stop.setEnabled(False)
+        self.btn_copy = QPushButton("Copy Endpoint")
 
         top = QVBoxLayout(self)
         row = QHBoxLayout()
         row.addWidget(QLabel("Endpoint:"))
         row.addWidget(self.endpoint_edit)
+        row.addWidget(self.btn_copy)
         top.addLayout(row)
+        top.addWidget(self.public_access)
         top.addWidget(self.autocontrast)
         top.addWidget(self.status_label)
         row2 = QHBoxLayout()
@@ -47,11 +61,14 @@ class ReceiverWidget(QWidget):
 
         self.btn_start.clicked.connect(self._on_start)
         self.btn_stop.clicked.connect(self._on_stop)
+        self.btn_copy.clicked.connect(self._copy_endpoint)
+        self.public_access.stateChanged.connect(self._on_public_toggled)
 
     def _on_start(self):
         endpoint = self.endpoint_edit.text().strip()
+        bind_endpoint = self._resolve_endpoint_for_worker(endpoint)
         self._thread = QThread()
-        self._worker = ZMQImageListener(endpoint)
+        self._worker = ZMQImageListener(bind_endpoint)
         self._worker.moveToThread(self._thread)
 
         self._thread.started.connect(self._worker.start)
@@ -71,6 +88,29 @@ class ReceiverWidget(QWidget):
             self._thread.wait()
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)
+
+    def _on_public_toggled(self, checked: int):
+        is_public = bool(checked)
+        suggested = default_endpoint(public=is_public)
+        current = self.endpoint_edit.text().strip()
+        if current == self._last_auto_endpoint:
+            self.endpoint_edit.setText(suggested)
+        self._last_auto_endpoint = suggested
+
+    def _copy_endpoint(self):
+        endpoint = self.endpoint_edit.text().strip()
+        QGuiApplication.clipboard().setText(endpoint)
+
+    def _resolve_endpoint_for_worker(self, endpoint: str) -> str:
+        if not self.public_access.isChecked():
+            return endpoint
+        if endpoint.startswith("tcp://"):
+            return bind_endpoint_for_public(endpoint)
+        # If the field holds a non-TCP endpoint, fall back to a sensible TCP default.
+        fallback = default_endpoint(public=True)
+        self.endpoint_edit.setText(fallback)
+        self._last_auto_endpoint = fallback
+        return bind_endpoint_for_public(fallback)
 
     def _on_received(self, arr: np.ndarray, meta: dict):
         name = meta.get("name", "array")

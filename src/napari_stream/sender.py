@@ -242,7 +242,7 @@ class StreamSender:
                 result = self.retrieve_array_like(f"{name}[{i}]", value)
                 new_obj.update(result)
             return new_obj
-        elif self.is_arraylike(obj):
+        elif self.is_arraylike(obj) and len(obj) >= 1:
             return {name: obj}
         else:
             return {}
