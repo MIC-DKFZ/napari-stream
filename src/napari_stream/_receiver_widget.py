@@ -1,7 +1,6 @@
 from __future__ import annotations
 import traceback
 from typing import Optional
-
 import numpy as np
 from qtpy.QtCore import QThread
 from qtpy.QtGui import QGuiApplication

@@ -2,13 +2,11 @@ from __future__ import annotations
 import json
 import os
 import time
-from typing import Optional, Sequence, Any, Iterable
+from typing import Optional, Sequence, Any
 from collections.abc import Mapping
-
 import numpy as np
 import zmq
-from ._listener import default_endpoint
-from numpy.typing import ArrayLike
+from ._utils import default_endpoint
 
 
 class StreamSender:
