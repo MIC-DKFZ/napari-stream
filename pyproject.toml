@@ -37,6 +37,9 @@ dependencies = [
 # Allow easily installation with the full, default napari installation
 # (including Qt backend) using napari-stream[all].
 all = ["napari[all]"]
+test = [
+    "qtpy",
+]
 
 [dependency-groups]
 dev = [
