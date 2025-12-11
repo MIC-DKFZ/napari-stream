@@ -31,6 +31,7 @@ requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "pyzmq",
+    "medvol",
 ]
 
 [project.optional-dependencies]
@@ -52,6 +53,9 @@ dev = [
 
 [project.entry-points."napari.manifest"]
 napari-stream = "napari_stream:napari.yaml"
+
+[project.scripts]
+napari_stream = "napari_stream.sender:main"
 
 [build-system]
 requires = ["setuptools>=42.0.0", "setuptools_scm"]

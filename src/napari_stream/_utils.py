@@ -1,5 +1,4 @@
 from __future__ import annotations
-import os
 import socket
 
 DEFAULT_TCP_PORT = 5556
@@ -8,10 +7,8 @@ DEFAULT_TCP_PORT = 5556
 def default_endpoint(public: bool = False) -> str:
     if public:
         return f"tcp://{_preferred_ip()}:{DEFAULT_TCP_PORT}"
-    if os.name == "nt":  # Windows: prefer TCP
-        return f"tcp://127.0.0.1:{DEFAULT_TCP_PORT}"
-    # Unix: fast local IPC
-    return "ipc:///tmp/napari_stream.sock"
+    # TCP everywhere for simplicity
+    return f"tcp://127.0.0.1:{DEFAULT_TCP_PORT}"
 
 
 def _preferred_ip() -> str:

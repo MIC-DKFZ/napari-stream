@@ -1,4 +1,5 @@
 from __future__ import annotations
+import argparse
 import json
 import os
 import time
@@ -333,3 +334,84 @@ def send(*args, **kwargs) -> None:
     sender_kwargs = {k: kwargs.pop(k) for k in sender_keys if k in kwargs}
     sender = StreamSender(**sender_kwargs)
     sender.send(*args, **kwargs)
+
+
+def _load_array(path: str, key: Optional[str] = None) -> tuple[np.ndarray, Optional[np.ndarray]]:
+    lower = path.lower()
+    is_medvol_candidate = lower.endswith((".nii", ".nii.gz", ".nrrd"))
+    if is_medvol_candidate:
+        from medvol import MedVol  # type: ignore
+        mv = MedVol(path)
+        return np.asarray(mv.array), np.asarray(mv.affine) if mv.affine is not None else None
+
+    arr = np.load(path)
+    if isinstance(arr, np.lib.npyio.NpzFile):
+        keys = list(arr.keys())
+        if key is None:
+            if len(keys) != 1:
+                raise ValueError(f"NPZ contains multiple arrays {keys}; specify --key.")
+            key = keys[0]
+        if key not in keys:
+            raise ValueError(f"Key {key!r} not found in NPZ; available: {keys}")
+        return np.asarray(arr[key]), None
+    return np.asarray(arr), None
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Send an array to a napari-stream receiver.")
+    parser.add_argument("path", help="Path to .npy/.npz or medical volume (.nii/.nii.gz/.nrrd).")
+    parser.add_argument("--key", help="Array key inside .npz (if omitted and multiple arrays exist, will error).")
+    parser.add_argument("--endpoint", help="Receiver endpoint (tcp://host:port). Falls back to NAPARI_STREAM_ENDPOINT or default.")
+    parser.add_argument("--name", help="Layer name.")
+    parser.add_argument("--colormap", help="Colormap name.")
+    parser.add_argument("--contrast-limits", nargs=2, type=float, metavar=("LOW", "HIGH"), help="Contrast limits.")
+    parser.add_argument("--rgb", action="store_true", help="Treat array as RGB.")
+    parser.add_argument("--affine", help="Path to .npy/.npz containing affine matrix (overrides MedVol affine).")
+    parser.add_argument("--scale", nargs="+", type=float, help="Scale factors.")
+    parser.add_argument("--translate", nargs="+", type=float, help="Translation.")
+    parser.add_argument("--opacity", type=float, help="Opacity.")
+    parser.add_argument("--blending", help="Blending mode.")
+    parser.add_argument("--labels", action="store_true", help="Send as labels layer.")
+    parser.add_argument("--high-water-mark", type=int, default=10, help="Sender high water mark (default: 10).")
+    parser.add_argument("--linger-ms", type=int, default=2000, help="Socket linger in ms (default: 2000).")
+    parser.add_argument("--no-ensure-delivery", dest="ensure_delivery", action="store_false", help="Disable delivery tracking.")
+    parser.set_defaults(ensure_delivery=True)
+    return parser
+
+
+def main(argv: Optional[Sequence[str]] = None) -> None:
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+
+    arr, inferred_affine = _load_array(args.path, args.key)
+    affine = None
+    if args.affine:
+        affine, _ = _load_array(args.affine)
+    elif inferred_affine is not None:
+        affine = inferred_affine
+
+    sender_kwargs = {
+        "endpoint": args.endpoint,
+        "high_water_mark": args.high_water_mark,
+        "linger_ms": args.linger_ms,
+        "ensure_delivery": args.ensure_delivery,
+    }
+
+    send_kwargs = {
+        "name": args.name,
+        "colormap": args.colormap,
+        "contrast_limits": args.contrast_limits,
+        "rgb": True if args.rgb else None,
+        "affine": affine,
+        "scale": args.scale,
+        "translate": args.translate,
+        "opacity": args.opacity,
+        "blending": args.blending,
+        "is_labels": args.labels,
+    }
+    send_kwargs = {k: v for k, v in send_kwargs.items() if v is not None}
+    send(arr, **send_kwargs, **sender_kwargs)
+
+
+if __name__ == "__main__":
+    main()
