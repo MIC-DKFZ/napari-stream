@@ -8,7 +8,7 @@
 [![npe2](https://img.shields.io/badge/plugin-npe2-blue?link=https://napari.org/stable/plugins/index.html)](https://napari.org/stable/plugins/index.html)
 [![Copier](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/copier-org/copier/master/img/badge/badge-grayscale-inverted-border-purple.json)](https://github.com/copier-org/copier)
 
-A plugin to send and receive image data for visualization in Napari from other applications.
+A plugin to send and receive multi-dimensional image data for visualization in Napari over the network.
 
 `napari-stream` lets you push images from any application, process, or codebase into a running napari instance—even from another machine. It can automatically pull array-like data (NumPy, PyTorch tensors, zarr arrays, etc.) from nested Python lists and dicts, so you can stream complex structures without manual extraction. You can keep things private (local IPC/loopback) or make the receiver reachable publicly over TCP. The receiver endpoint can also be set via the `NAPARI_STREAM_ENDPOINT` environment variable.
 

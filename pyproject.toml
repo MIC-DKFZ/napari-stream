@@ -1,7 +1,7 @@
 [project]
 name = "napari-stream"
 dynamic = ["version"]
-description = "A plugin to send and receive image data for visualization in Napari from other applications"
+description = "A plugin to send and receive multi-dimensional image data for visualization in Napari over the network."
 readme = "README.md"
 license = {file = "LICENSE"}
 authors = [
