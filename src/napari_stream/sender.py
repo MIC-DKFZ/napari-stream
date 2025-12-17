@@ -28,11 +28,14 @@ class StreamSender:
         high_water_mark: int = 10,
         linger_ms: int = 2000,
         ensure_delivery: bool = True,
+        *,
+        verbose: bool = False,
     ):
         if endpoint is None:
             endpoint = os.environ.get("NAPARI_STREAM_ENDPOINT") or default_endpoint()
         self.endpoint = endpoint
         self.ensure_delivery = ensure_delivery
+        self.verbose = verbose
         self._ctx = zmq.Context.instance()
         self._sock = self._ctx.socket(zmq.PUSH)
         self._sock.setsockopt(zmq.SNDHWM, high_water_mark)
@@ -159,7 +162,10 @@ class StreamSender:
         buf = memoryview(arr)  # zero-copy
         tracker = None
         last_err = None
-        for _ in range(3):
+        if self.verbose:
+            print(f"[napari-stream][sender] Trying to send to {self.endpoint}")
+        max_attempts = 20
+        for attempt in range(1, max_attempts + 1):
             try:
                 tracker = self._sock.send_multipart(
                     [header, buf],
@@ -168,15 +174,21 @@ class StreamSender:
                     track=self.ensure_delivery,
                 )
                 last_err = None
+                if self.verbose:
+                    print(f"[napari-stream][sender] Sending to {self.endpoint}")
                 break
             except zmq.Again as e:
                 last_err = e
-                # Allow a brief window for sockets to finish connecting
-                time.sleep(0.05)
+                if self.verbose:
+                    print(f"[napari-stream][sender] Receiver not ready (attempt {attempt}/{max_attempts}); retrying…")
+                # Allow time for sockets/tunnels to finish connecting
+                time.sleep(0.1)
         if last_err is not None:
             raise RuntimeError(f"No receiver available at endpoint {self.endpoint}") from last_err
         if self.ensure_delivery and tracker is not None:
             tracker.wait()
+        if self.verbose:
+            print(f"[napari-stream][sender] Send complete to {self.endpoint}")
 
     # ---- conversion helpers ----
 
@@ -330,7 +342,7 @@ def send(*args, **kwargs) -> None:
       - Python lists/tuples and dicts (recursively searched for arraylikes;
         nested Python lists of numbers are also converted to NumPy)
     """
-    sender_keys = ("endpoint", "high_water_mark", "linger_ms", "ensure_delivery")
+    sender_keys = ("endpoint", "high_water_mark", "linger_ms", "ensure_delivery", "verbose")
     sender_kwargs = {k: kwargs.pop(k) for k in sender_keys if k in kwargs}
     sender = StreamSender(**sender_kwargs)
     sender.send(*args, **kwargs)
@@ -375,6 +387,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--high-water-mark", type=int, default=10, help="Sender high water mark (default: 10).")
     parser.add_argument("--linger-ms", type=int, default=2000, help="Socket linger in ms (default: 2000).")
     parser.add_argument("--no-ensure-delivery", dest="ensure_delivery", action="store_false", help="Disable delivery tracking.")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging to stdout.")
     parser.set_defaults(ensure_delivery=True)
     return parser
 
@@ -383,7 +396,11 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
+    if args.verbose:
+        print(f"[napari-stream][sender] Loading data from {args.path}")
     arr, inferred_affine = _load_array(args.path, args.key)
+    if args.verbose:
+        print(f"[napari-stream][sender] Loaded data shape={arr.shape} dtype={arr.dtype}")
     affine = None
     if args.affine:
         affine, _ = _load_array(args.affine)
@@ -395,6 +412,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         "high_water_mark": args.high_water_mark,
         "linger_ms": args.linger_ms,
         "ensure_delivery": args.ensure_delivery,
+        "verbose": args.verbose,
     }
 
     send_kwargs = {
@@ -410,7 +428,11 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         "is_labels": args.labels,
     }
     send_kwargs = {k: v for k, v in send_kwargs.items() if v is not None}
+    if args.verbose:
+        print(f"[napari-stream][sender] Attempting to send to {sender_kwargs['endpoint'] or 'default endpoint'}")
     send(arr, **send_kwargs, **sender_kwargs)
+    if args.verbose:
+        print("[napari-stream][sender] Finished sending.")
 
 
 if __name__ == "__main__":

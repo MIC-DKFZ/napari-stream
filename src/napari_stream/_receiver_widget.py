@@ -16,6 +16,7 @@ from qtpy.QtWidgets import (
     QCheckBox,
     QRadioButton,
     QButtonGroup,
+    QGroupBox,
 )
 
 from ._listener import ZMQImageListener, bind_endpoint_for_public
@@ -47,17 +48,22 @@ class ReceiverWidget(QWidget):
 
         self.endpoint_edit = QLineEdit(self._endpoint_local)
         self.status_label = QLabel("Idle")
-        self.mode_local = QRadioButton("Local only")
-        self.mode_private = QRadioButton("Private network")
-        self.mode_tunnel = QRadioButton("Private network (Reverse SSH Tunnel)")
+        self.mode_local = QRadioButton("This computer only")
+        self.mode_tunnel = QRadioButton("Remote host via SSH")
+        self.mode_private = QRadioButton("Local network")
         self.mode_local.setChecked(True)
         self.mode_group = QButtonGroup(self)
-        for btn in (self.mode_local, self.mode_private, self.mode_tunnel):
+        for btn in (self.mode_local, self.mode_tunnel, self.mode_private):
             self.mode_group.addButton(btn)
+        self.mode_local.setToolTip("Listen on 127.0.0.1 only. Use when sender runs on this machine.")
+        self.mode_private.setToolTip("Bind to your LAN/VPN IP so other machines can connect directly.\nShare the shown tcp://<ip>:port endpoint with the sender (e.g., set NAPARI_STREAM_ENDPOINT).\nNote: some corporate/VPN setups block inbound connections; if this fails, use the SSH tunnel mode.")
+        self.mode_tunnel.setToolTip("Create an SSH reverse tunnel to a remote host. Enter SSH target as user@host[#port]; sender connects to its local tcp://127.0.0.1:<port>.")
 
         self.autocontrast = QCheckBox("Auto-contrast on new images")
         self.autocontrast.setChecked(True)
-        self.ignore_affine = QCheckBox("Ignore affine")
+        self.ignore_affine = QCheckBox("Ignore image affine")
+        self.ignore_affine.setToolTip("Ignore affine metadata when adding images. Use if napari errors on certain affines.")
+        self.verbose = QCheckBox("Verbose")
 
         self.btn_run = QPushButton("Start")
         self.btn_copy = QPushButton("Copy Endpoint")
@@ -66,11 +72,15 @@ class ReceiverWidget(QWidget):
         top.addWidget(QLabel("Endpoint:"))
         top.addWidget(self.endpoint_edit)
         top.addWidget(self.btn_copy)
-        top.addWidget(self.mode_local)
-        top.addWidget(self.mode_private)
-        top.addWidget(self.mode_tunnel)
+        mode_box = QGroupBox("Connection mode")
+        mode_layout = QVBoxLayout(mode_box)
+        mode_layout.addWidget(self.mode_local)
+        mode_layout.addWidget(self.mode_tunnel)
+        mode_layout.addWidget(self.mode_private)
+        top.addWidget(mode_box)
         top.addWidget(self.autocontrast)
         top.addWidget(self.ignore_affine)
+        top.addWidget(self.verbose)
         top.addWidget(self.status_label)
         row2 = QHBoxLayout()
         row2.addWidget(self.btn_run)
@@ -129,6 +139,7 @@ class ReceiverWidget(QWidget):
         self._thread.start()
 
         if mode == "tunnel":
+            self._log_verbose(f"Starting reverse tunnel to {ssh_target}:{ssh_port} (local {endpoint})")
             if not self._start_reverse_tunnel(ssh_target, ssh_port, endpoint):
                 self._on_stop()
 
@@ -159,8 +170,10 @@ class ReceiverWidget(QWidget):
         mode = self._current_mode()
         self.endpoint_edit.setPlaceholderText("user@remote or ssh-alias[#port]" if mode == "tunnel" else "")
         self.endpoint_edit.setText(self._endpoint_for_mode(mode))
+        self.btn_copy.setEnabled(mode != "tunnel")
         self._last_mode = mode
         self.status_label.setText("Idle")
+        self._log_verbose(f"Switched mode to {mode}")
 
     def _current_mode(self) -> str:
         if self.mode_private.isChecked():
@@ -239,11 +252,13 @@ class ReceiverWidget(QWidget):
         args = [cmd]
         if cmd.endswith("autossh"):
             args += ["-M", "0"]
-        args += ["-N", "-R", f"{remote_port}:localhost:{local_port}"]
+        # Use 127.0.0.1 explicitly to avoid IPv6/hostname resolution differences across OSes.
+        args += ["-N", "-R", f"{remote_port}:127.0.0.1:{local_port}"]
         if ssh_port != 22:
             args += ["-p", str(ssh_port)]
         args.append(target)
         try:
+            self._log_verbose(f"Launching tunnel cmd: {' '.join(args)}")
             self._tunnel_proc = subprocess.Popen(
                 args,
                 stdout=subprocess.DEVNULL,
@@ -251,16 +266,19 @@ class ReceiverWidget(QWidget):
                 start_new_session=False,
             )
             self.status_label.setText(f"Reverse tunnel via {target} (port {ssh_port})")
+            self._log_verbose("Tunnel started.")
             return True
         except Exception as exc:  # noqa: BLE001
             self._tunnel_proc = None
             self.status_label.setText(f"Failed to start tunnel: {exc}")
+            self._log_verbose(f"Tunnel start failed: {exc}")
             return False
 
     def _stop_tunnel(self, *_):
         if self._tunnel_proc is None:
             return
         try:
+            self._log_verbose("Stopping tunnel…")
             self._tunnel_proc.terminate()
             self._tunnel_proc.wait(timeout=2)
         except Exception:
@@ -270,6 +288,11 @@ class ReceiverWidget(QWidget):
                 pass
         finally:
             self._tunnel_proc = None
+            self._log_verbose("Tunnel stopped.")
+
+    def _log_verbose(self, msg: str):
+        if self.verbose.isChecked():
+            print(f"[napari-stream][receiver] {msg}")
 
     def _is_running(self) -> bool:
         return self._thread is not None and self._thread.isRunning()
@@ -281,6 +304,7 @@ class ReceiverWidget(QWidget):
     def _on_received(self, arr: np.ndarray, meta: dict):
         name = meta.get("name", "array")
         is_labels = bool(meta.get("is_labels", False))
+        self._log_verbose(f"Received data name={name} shape={arr.shape} dtype={arr.dtype} labels={is_labels}")
 
         # Build kwargs common + per-layer-type
         viewer_kwargs = {}
