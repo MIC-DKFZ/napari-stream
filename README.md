@@ -1,4 +1,8 @@
-# napari-stream
+<p align="center">
+  <img src="napari_stream.png" alt="Alt text" width="1000">
+</p>
+
+______________________________________________________________________
 
 [![License MIT](https://img.shields.io/pypi/l/napari-stream.svg?color=green)](https://github.com/Karol-G/napari-stream/raw/main/LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/napari-stream.svg?color=green)](https://pypi.org/project/napari-stream)
